@@ -22,4 +22,4 @@ You can access the live version of the tool at: [Insert Your Website URL Here]
 - **Dynamic Equation Generation**: The equations are dynamically generated based on the connected nodes’ inputs and outputs.
 
 ## Contributing:
-Feel free to contact me if you'd like to suggest features, improvements, or report bugs.
+Feel free to contact me if you'd like to suggest features, improvements, or report bugs. You can reach me via email at **ejcave1@gmail.com**.
