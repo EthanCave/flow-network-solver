@@ -21,6 +21,7 @@ const App = () => {
   // Create a flow (connection) between two points
   const createFlow = (start, end) => {
     if (start.id === end.id) return; // Prevent self-loops
+    
   
     const label = prompt('Enter a constant (number) or variable (letter) for this flow:');
   
@@ -30,20 +31,26 @@ const App = () => {
   
     if (isVariable || isConstant) {
       const lineId = `${start.id}-${end.id}`;
-      setFlowLabels((prevLabels) => ({
-        ...prevLabels,
-        [lineId]: label,
-      }));
-      setLines((prev) => [...prev, { start, end, lineId }]);
-      updateEquations([...lines, { start, end, lineId }], { ...flowLabels, [lineId]: label });
+      setFlowLabels((prevLabels) => {
+        const updatedLabels = { ...prevLabels, [lineId]: label };
+        return updatedLabels;
+      });
+  
+      setLines((prevLines) => {
+        const updatedLines = [...prevLines, { start, end, lineId }];
+        updateEquations(updatedLines, { ...flowLabels, [lineId]: label });
+        return updatedLines;
+      });
     } else {
       alert("Please enter a single letter for variables or a number for constants.");
     }
   };
+  
+
 
   // Update equations whenever flows or labels change
 // Update equations based on flows for each node
-const updateEquations = () => {
+const updateEquations = (lines, flowLabels) => {
   const nodeConnections = {}; // Track incoming and outgoing connections for each node
 
   // Step 1: Populate nodeConnections with input and output connections for each node
@@ -68,12 +75,13 @@ const updateEquations = () => {
     const { inputs, outputs } = nodeConnections[nodeId];
 
     // Log inputs and outputs for each node
-    diagnostics.push(`Node ${nodeId}: Inputs = [${inputs.join(", ")}], Outputs = [${outputs.join(", ")}]`);
 
-    // Generate an equation for each node, even if it's trivial
-    const inputSum = inputs.length > 0 ? inputs.join(" + ") : "0";
-    const outputSum = outputs.length > 0 ? outputs.join(" + ") : "0";
-    newEquations.push(`${outputSum} = ${inputSum}`);
+    // Only generate equations for nodes that have both inputs and outputs
+    if (inputs.length > 0 && outputs.length > 0) {
+      const inputSum = inputs.join(" + ");
+      const outputSum = outputs.join(" + ");
+      newEquations.push(`${outputSum} = ${inputSum}`);
+    }
   });
 
   if (diagnostics.length === 0) {
@@ -85,9 +93,12 @@ const updateEquations = () => {
   setEquations(combinedOutput);
 };
 
+
+
+
   // Remove a point using right-click
-  const removePoint = (e) => {
-    e.preventDefault(); // Prevent the default context menu
+const removePoint = (e) => {
+  e.preventDefault(); // Prevent the default context menu
     const { offsetX, offsetY } = e.nativeEvent;
 
     // Find the clicked point based on proximity to the click
@@ -121,62 +132,52 @@ const updateEquations = () => {
   
   // Solve the network by converting flows into equations
   const solveNetwork = () => {
-    const equations = [];
-    const constants = [];
-    lines.forEach((line) => {
-      const flowLabel = flowLabels[line.lineId];
-      if (flowLabel === 'variable') {
-        equations.push([1, 0, -1]);
-        constants.push(0);
-      } else if (flowLabel === 'constant') {
-        equations.push([0, 1, 1]);
-        constants.push(1);
-      }
-    });
-
-    const matrix = gaussianElimination(equations, constants);
-    setEquations({ equations, matrix });
+    const equationsArray = equations.map(eq => eq.split("="));
+    const leftMatrix = equationsArray.map(eq => eq[0].split(" + "));
+    const rightConstants = equationsArray.map(eq => parseFloat(eq[1]));
+    const solution = gaussianElimination(leftMatrix, rightConstants);
+  
+    setEquations(solution ? solution : ["No solution found"]);
   };
 
 
 // Gaussian elimination function
-  const gaussianElimination = (matrix, constants) => {
-    try {
-      const augmentedMatrix = matrix.map((row, i) => row.concat([constants[i]]));
-      const n = augmentedMatrix.length;
-
-      for (let i = 0; i < n; i++) {
-        let maxRow = i;
-        for (let j = i + 1; j < n; j++) {
-          if (Math.abs(augmentedMatrix[j][i]) > Math.abs(augmentedMatrix[maxRow][i])) {
-            maxRow = j;
-          }
-        }
-
-        [augmentedMatrix[i], augmentedMatrix[maxRow]] = [augmentedMatrix[maxRow], augmentedMatrix[i]];
-
-        for (let j = i + 1; j < n; j++) {
-          const factor = augmentedMatrix[j][i] / augmentedMatrix[i][i];
-          for (let k = i; k < n + 1; k++) {
-            augmentedMatrix[j][k] -= factor * augmentedMatrix[i][k];
-          }
-        }
+const gaussianElimination = (matrix, constants) => {
+  const n = matrix.length;
+  for (let i = 0; i < n; i++) {
+    // Find the max element for pivot
+    let maxRow = i;
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(matrix[k][i]) > Math.abs(matrix[maxRow][i])) {
+        maxRow = k;
       }
-
-      const solution = Array(n).fill(0);
-      for (let i = n - 1; i >= 0; i--) {
-        solution[i] = augmentedMatrix[i][n] / augmentedMatrix[i][i];
-        for (let j = i - 1; j >= 0; j--) {
-          augmentedMatrix[j][n] -= augmentedMatrix[j][i] * solution[i];
-        }
-      }
-
-      return solution;
-    } catch (error) {
-      console.error("Error solving the system:", error);
-      return [];
     }
-  };
+    [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]]; // Swap rows in both matrix and constants
+
+    // Normalize pivot row
+    for (let k = i + 1; k < n + 1; k++) {
+      matrix[i][k] /= matrix[i][i];
+    }
+    constants[i] /= matrix[i][i];
+
+    for (let k = i + 1; k < n; k++) {
+      const factor = matrix[k][i];
+      for (let j = i; j < n + 1; j++) {
+        matrix[k][j] -= factor * matrix[i][j];
+      }
+      constants[k] -= factor * constants[i];
+    }
+  }
+
+  const x = Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    x[i] = constants[i];
+    for (let k = i - 1; k >= 0; k--) {
+      constants[k] -= matrix[k][i] * x[i];
+    }
+  }
+  return x;
+};
 
 
   // Handle canvas clicks based on mode
@@ -184,25 +185,22 @@ const updateEquations = () => {
     const { offsetX, offsetY } = e.nativeEvent;
   
     if (mode === 'edit') {
-      // Create a new point if in edit mode
-      createPoint(offsetX, offsetY);
     } else if (mode === 'connect') {
-      // Connect two points if in connection mode
       const clickedPoint = points.find(
         (point) => Math.abs(point.x - offsetX) < 15 && Math.abs(point.y - offsetY) < 15
       );
   
       if (clickedPoint && selectedPoint) {
-        // Only create flow if points are distinct
         if (clickedPoint.id !== selectedPoint.id) {
           createFlow(selectedPoint, clickedPoint);
         }
         setSelectedPoint(null); // Reset selected point after connecting
       } else {
-        setSelectedPoint(clickedPoint); // Set the first point for connection
+        setSelectedPoint(clickedPoint);
       }
     }
   };
+  
 
   // Mouse down for dragging points
 
@@ -210,20 +208,21 @@ const updateEquations = () => {
     if (mode === "connect") return; // Disable dragging in connect mode
     
     const { offsetX, offsetY } = e.nativeEvent;
-    
+  
+    // Find the point that was clicked on (within a small radius)
     const clickedPoint = points.find(
-      (point) => Math.abs(point.x - offsetX) < 5 && Math.abs(point.y - offsetY) < 5
+      (point) => Math.abs(point.x - offsetX) < 10 && Math.abs(point.y - offsetY) < 10
     );
-    
+  
     if (clickedPoint) {
+      // Set the selected point for dragging if it exists
       setDraggingPoint(clickedPoint);
     } else if (mode === "edit") {
-      setPoints((prevPoints) => [
-        ...prevPoints,
-        { id: `point-${prevPoints.length + 1}`, x: offsetX, y: offsetY },
-      ]);
+      // Only create a new point if not dragging an existing point
+      createPoint(offsetX, offsetY);
     }
   };
+  
 
   // Mouse move to drag the points
 
@@ -231,6 +230,7 @@ const updateEquations = () => {
     if (draggingPoint && mode === "edit") {
       const { offsetX, offsetY } = e.nativeEvent;
       
+      // Update the position of the point being dragged
       setPoints((prevPoints) =>
         prevPoints.map((point) =>
           point.id === draggingPoint.id
@@ -239,6 +239,7 @@ const updateEquations = () => {
         )
       );
   
+      // Update line positions to follow the dragged point
       setLines((prevLines) =>
         prevLines.map((line) =>
           line.start.id === draggingPoint.id
@@ -252,8 +253,7 @@ const updateEquations = () => {
   };
   
   const handleMouseUp = () => {
-    // End dragging without adding a new point
-    setDraggingPoint(null);
+    setDraggingPoint(null); // Clear the dragging state
   };
 
   // Draw an arrow at the end of the flow
@@ -300,8 +300,8 @@ const updateEquations = () => {
     // Draw points
     points.forEach((point) => {
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = "blue";
+      ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "orange";
       ctx.fill();
     });
   
