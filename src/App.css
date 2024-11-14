@@ -1,0 +1,57 @@
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #303030;
+  margin: 0;
+  padding: 0;
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+}
+
+.canvas-container {
+  background-color: #424242;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+canvas {
+  border: 2px solid #FF5722;
+  border-radius: 10px;
+}
+
+.controls {
+  margin-top: 20px;
+  display: flex;
+  gap: 20px;
+}
+
+.mode-button, .solve-button {
+  background-color: #FF5722;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.mode-button:hover, .solve-button:hover {
+  background-color: #FF3D00;
+}
+
+.equations {
+  margin-top: 20px;
+  background-color: #424242;
+  border-radius: 5px;
+  padding: 20px;
+  width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+h3 {
+  color: #FF5722;
+}
