@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { lusolve } from 'mathjs';
 import './App.css';
 
 const App = () => {
@@ -11,7 +12,165 @@ const App = () => {
   const [mode, setMode] = useState("edit"); // "edit" or "connect"
   const [buttonLabel, setButtonLabel] = useState("Edit Mode");
   const [draggingPoint, setDraggingPoint] = useState(null);
+  const [eliminationSteps, setEliminationSteps] = useState([]);
+  const [steps, setSteps] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
 
+
+  const updateEquations = (lines, flowLabels) => {
+    const nodeConnections = {}; // Track incoming and outgoing connections for each node
+    const newEquations = []; // Array to hold the final equations
+
+    lines.forEach((line) => {
+      const { start, end } = line;
+      const label = flowLabels[line.lineId];
+      if (!nodeConnections[start.id]) nodeConnections[start.id] = { inputs: [], outputs: [] };
+      if (!nodeConnections[end.id]) nodeConnections[end.id] = { inputs: [], outputs: [] };
+      nodeConnections[start.id].outputs.push(label);
+      nodeConnections[end.id].inputs.push(label);
+    });
+
+    Object.keys(nodeConnections).forEach((nodeId) => {
+      const { inputs, outputs } = nodeConnections[nodeId];
+      if (inputs.length > 0 && outputs.length > 0) {
+        const inputSum = inputs.join(" + ");
+        const outputSum = outputs.join(" + ");
+        newEquations.push(`${outputSum} = ${inputSum}`);
+      }
+    });
+    console.log("Generated equations:", newEquations); // Log the equations generated
+    setEquations(newEquations);
+  };
+
+  // Solve network and set elimination steps
+  function solveNetwork(equations) {
+    // Check if `equations` is defined and is an array
+    if (!Array.isArray(equations)) {
+        console.error("Expected an array of equations, but got:", equations);
+        return null;
+    }
+
+    const variables = new Set();
+
+    // Process each equation to find variables
+    equations.forEach(eq => {
+        const variableMatches = eq.match(/[a-zA-Z]+/g);
+        variableMatches.forEach(variable => variables.add(variable));
+    });
+
+    const variableList = Array.from(variables);
+    const variableIndex = variableList.reduce((obj, v, i) => {
+        obj[v] = i;
+        return obj;
+    }, {});
+
+    const leftMatrix = [];
+    const rightConstants = [];
+
+    equations.forEach(eq => {
+        const [leftSide, rightSide] = eq.split("=").map(side => side.trim());
+
+        const leftCoefficients = Array(variableList.length).fill(0);
+        let rightConstant = 0;
+
+        const leftTerms = leftSide.split(/(?=\+|-)/).map(term => term.trim());
+        leftTerms.forEach(term => {
+            const variableMatch = term.match(/[a-zA-Z]+/);
+            const coefficientMatch = term.match(/-?\d+/);
+
+            if (variableMatch) {
+                const variable = variableMatch[0];
+                const coefficient = coefficientMatch ? parseFloat(coefficientMatch[0]) : 1;
+                const index = variableIndex[variable];
+                leftCoefficients[index] = coefficient;
+            } else if (coefficientMatch) {
+                rightConstant -= parseFloat(coefficientMatch[0]);
+            }
+        });
+
+        const rightTerms = rightSide.split(/(?=\+|-)/).map(term => term.trim());
+        rightTerms.forEach(term => {
+            const constantMatch = term.match(/-?\d+/);
+            if (constantMatch) {
+                rightConstant += parseFloat(constantMatch[0]);
+            }
+        });
+
+        leftMatrix.push(leftCoefficients);
+        rightConstants.push(rightConstant);
+    });
+
+    console.log("Left Matrix:", leftMatrix);
+    console.log("Right Constants:", rightConstants);
+
+    const result = {};
+    if (leftMatrix.length === 2 && leftMatrix[0].length === 2) {
+        const [[a, b], [c, d]] = leftMatrix;
+        const [e, f] = rightConstants;
+        const determinant = a * d - b * c;
+        if (determinant !== 0) {
+            result[variableList[0]] = (e * d - b * f) / determinant;
+            result[variableList[1]] = (a * f - e * c) / determinant;
+        } else {
+            console.error("No unique solution for this system.");
+            return null;
+        }
+    } else if (leftMatrix.length === 3 && leftMatrix[0].length === 3) {
+        const [[a, b, c], [d, e, f], [g, h, i]] = leftMatrix;
+        const [j, k, l] = rightConstants;
+
+        const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        if (determinant !== 0) {
+            result[variableList[0]] =
+                (j * (e * i - f * h) - b * (k * i - f * l) + c * (k * h - e * l)) /
+                determinant;
+            result[variableList[1]] =
+                (a * (k * i - f * l) - j * (d * i - f * g) + c * (d * l - k * g)) /
+                determinant;
+            result[variableList[2]] =
+                (a * (e * l - k * h) - b * (d * l - k * g) + j * (d * h - e * g)) /
+                determinant;
+        } else {
+            console.error("No unique solution for this system.");
+            return null;
+        }
+    } else {
+        console.error("Unsupported matrix size. Use a library for larger systems.");
+        return null;
+    }
+
+    return result;
+}
+
+
+
+  
+  
+  
+  
+  
+
+  const evaluateExpression = (expr) => {
+    try {
+      return eval(expr);
+    } catch (error) {
+      console.error("Error evaluating expression:", expr);
+      return NaN;
+    }
+  };
+
+  const parseTerms = (expr) => {
+    const terms = [];
+    const regex = /([+-]?\s*\d*)\s*([a-z])/g;
+    let match;
+    while ((match = regex.exec(expr)) !== null) {
+      const coefficient = match[1] === "" || match[1] === "+" ? 1 : parseFloat(match[1].replace(/\s+/g, ""));
+      const variable = match[2];
+      terms.push({ variable, coefficient });
+    }
+    return terms;
+  };
+  
   // Create a new point on click
   const createPoint = (x, y) => {
     const newPoint = { x, y, id: points.length };
@@ -46,56 +205,6 @@ const App = () => {
     }
   };
   
-
-
-  // Update equations whenever flows or labels change
-// Update equations based on flows for each node
-const updateEquations = (lines, flowLabels) => {
-  const nodeConnections = {}; // Track incoming and outgoing connections for each node
-
-  // Step 1: Populate nodeConnections with input and output connections for each node
-  lines.forEach((line) => {
-    const { start, end } = line;
-    const label = flowLabels[line.lineId];
-
-    // Initialize nodes in nodeConnections if they don't already exist
-    if (!nodeConnections[start.id]) nodeConnections[start.id] = { inputs: [], outputs: [] };
-    if (!nodeConnections[end.id]) nodeConnections[end.id] = { inputs: [], outputs: [] };
-
-    // Classify the label as an output from the start node and an input to the end node
-    nodeConnections[start.id].outputs.push(label); // Flow leaves start node
-    nodeConnections[end.id].inputs.push(label);    // Flow enters end node
-  });
-
-  const diagnostics = []; // Array to hold diagnostic information for each node
-  const newEquations = []; // Array to hold the final equations
-
-  // Output details for every node, regardless of its inputs and outputs
-  Object.keys(nodeConnections).forEach((nodeId) => {
-    const { inputs, outputs } = nodeConnections[nodeId];
-
-    // Log inputs and outputs for each node
-
-    // Only generate equations for nodes that have both inputs and outputs
-    if (inputs.length > 0 && outputs.length > 0) {
-      const inputSum = inputs.join(" + ");
-      const outputSum = outputs.join(" + ");
-      newEquations.push(`${outputSum} = ${inputSum}`);
-    }
-  });
-
-  if (diagnostics.length === 0) {
-    diagnostics.push("No connections found between nodes.");
-  }
-
-  // Combine diagnostics and equations for display
-  const combinedOutput = [...diagnostics, "Generated Equations:", ...newEquations];
-  setEquations(combinedOutput);
-};
-
-
-
-
   // Remove a point using right-click
 const removePoint = (e) => {
   e.preventDefault(); // Prevent the default context menu
@@ -130,53 +239,64 @@ const removePoint = (e) => {
     }
   };
   
-  // Solve the network by converting flows into equations
-  const solveNetwork = () => {
-    const equationsArray = equations.map(eq => eq.split("="));
-    const leftMatrix = equationsArray.map(eq => eq[0].split(" + "));
-    const rightConstants = equationsArray.map(eq => parseFloat(eq[1]));
-    const solution = gaussianElimination(leftMatrix, rightConstants);
-  
-    setEquations(solution ? solution : ["No solution found"]);
-  };
+  // Solve the network by converting flows into equation
 
 
 // Gaussian elimination function
-const gaussianElimination = (matrix, constants) => {
+const gaussianEliminationWithSteps = (matrix, constants) => {
+  const steps = [];
   const n = matrix.length;
+
   for (let i = 0; i < n; i++) {
-    // Find the max element for pivot
+    // Pivot to bring the highest value to the diagonal
     let maxRow = i;
     for (let k = i + 1; k < n; k++) {
       if (Math.abs(matrix[k][i]) > Math.abs(matrix[maxRow][i])) {
         maxRow = k;
       }
     }
-    [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]]; // Swap rows in both matrix and constants
+    [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]];
+    [constants[i], constants[maxRow]] = [constants[maxRow], constants[i]];
 
-    // Normalize pivot row
-    for (let k = i + 1; k < n + 1; k++) {
-      matrix[i][k] /= matrix[i][i];
-    }
-    constants[i] /= matrix[i][i];
+    steps.push(`Pivot on row ${i + 1}. Matrix: ${JSON.stringify(matrix)} Constants: ${JSON.stringify(constants)}`);
 
+    // Elimination process
     for (let k = i + 1; k < n; k++) {
-      const factor = matrix[k][i];
-      for (let j = i; j < n + 1; j++) {
+      const factor = matrix[k][i] / matrix[i][i];
+      for (let j = i; j < n; j++) {
         matrix[k][j] -= factor * matrix[i][j];
       }
       constants[k] -= factor * constants[i];
+
+      steps.push(`Eliminate row ${k + 1} using row ${i + 1}. Matrix: ${JSON.stringify(matrix)} Constants: ${JSON.stringify(constants)}`);
     }
   }
 
+  // Back substitution
   const x = Array(n).fill(0);
   for (let i = n - 1; i >= 0; i--) {
     x[i] = constants[i];
-    for (let k = i - 1; k >= 0; k--) {
-      constants[k] -= matrix[k][i] * x[i];
+    for (let k = i + 1; k < n; k++) {
+      x[i] -= matrix[i][k] * x[k];
     }
+    x[i] /= matrix[i][i];
+    steps.push(`Solve for variable ${i + 1}. Solution: ${JSON.stringify(x)}`);
   }
-  return x;
+
+  return [x, steps];
+};
+
+
+const handleNextStep = () => {
+  if (currentStep < steps.length - 1) {
+    setCurrentStep(currentStep + 1);
+  }
+};
+
+const handlePreviousStep = () => {
+  if (currentStep > 0) {
+    setCurrentStep(currentStep - 1);
+  }
 };
 
 
@@ -328,22 +448,39 @@ const gaussianElimination = (matrix, constants) => {
       </div>
   
       <div className="controls">
-      <button className="mode-button" onClick={toggleMode}>
-        {buttonLabel}
-      </button>
+        <button className="mode-button" onClick={toggleMode}>
+          {buttonLabel}
+        </button>
         <button className="solve-button" onClick={solveNetwork}>
           Solve Network
         </button>
       </div>
   
       <div className="equations">
-      <h3>Equations:</h3>
-      {equations.length > 0 ? (
-        equations.map((eq, index) => <div key={index}>{eq}</div>)
-      ) : (
-        <p>No equations available</p>
-      )}
-    </div>
+        <h3>Equations:</h3>
+        {equations.length > 0 ? (
+          equations.map((eq, index) => <div key={index}>{eq}</div>)
+        ) : (
+          <p>No equations available</p>
+        )}
+      </div>
+
+      <div className="steps">
+        <h3>Gaussian Elimination Steps:</h3>
+        {steps.length > 0 ? (
+          <div>
+            <p>{steps[currentStep]}</p>
+            <button onClick={handlePreviousStep} disabled={currentStep === 0}>
+              Previous
+            </button>
+            <button onClick={handleNextStep} disabled={currentStep === steps.length - 1}>
+              Next
+            </button>
+          </div>
+        ) : (
+          <p>No steps available</p>
+        )}
+      </div>
     </div>
   );
   
